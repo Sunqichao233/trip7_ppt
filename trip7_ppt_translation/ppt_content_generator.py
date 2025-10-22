@@ -2,13 +2,15 @@ from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.enum.text import PP_ALIGN
 from pptx.dml.color import RGBColor
+from pptx.enum.dml import MSO_THEME_COLOR
 import json
 import os
+import shutil
 from PIL import Image
 
 def create_ppt_from_json(json_path, output_ppt_path, template_ppt_path=None):
     """
-    从日语JSON文件生成PPT文件
+    从日语JSON文件生成PPT文件，按页数对应模板页面
     
     Args:
         json_path (str): 日语JSON文件路径
@@ -24,13 +26,35 @@ def create_ppt_from_json(json_path, output_ppt_path, template_ppt_path=None):
         # 创建新的演示文稿或使用模板
         if template_ppt_path and os.path.exists(template_ppt_path):
             print(f"📋 使用模板文件: {template_ppt_path}")
-            prs = Presentation(template_ppt_path)
-            # 清空现有幻灯片
-            slide_ids = [slide.slide_id for slide in prs.slides]
-            for slide_id in slide_ids:
-                rId = prs.slides._sldIdLst[0].rId
+            
+            # 直接复制模板文件作为基础，保持完整格式
+            shutil.copy2(template_ppt_path, output_ppt_path)
+            prs = Presentation(output_ppt_path)
+            
+            print(f"🔄 开始修改 {len(slides_data)} 页幻灯片...")
+            
+            # 确保幻灯片数量匹配
+            while len(prs.slides) < len(slides_data):
+                # 复制最后一页作为新页面
+                last_slide = prs.slides[-1]
+                slide_layout = last_slide.slide_layout
+                new_slide = prs.slides.add_slide(slide_layout)
+            
+            # 删除多余的幻灯片（如果有）
+            while len(prs.slides) > len(slides_data):
+                rId = prs.slides._sldIdLst[-1].rId
                 prs.part.drop_rel(rId)
-                del prs.slides._sldIdLst[0]
+                del prs.slides._sldIdLst[-1]
+            
+            # 替换每页的文本内容
+            for i, slide_data in enumerate(slides_data):
+                slide_number = slide_data.get('slide_number', i+1)
+                print(f"📄 修改第 {slide_number} 页...")
+                
+                slide = prs.slides[i]
+                texts = slide_data.get('texts', [])
+                if texts:
+                    replace_slide_text_safe(slide, texts)
         else:
             print("📋 创建新的演示文稿")
             prs = Presentation()
@@ -39,31 +63,22 @@ def create_ppt_from_json(json_path, output_ppt_path, template_ppt_path=None):
                 rId = prs.slides._sldIdLst[0].rId
                 prs.part.drop_rel(rId)
                 del prs.slides._sldIdLst[0]
-        
-        # 设置幻灯片尺寸（如果JSON中有尺寸信息）
-        if slides_data and 'slide_width' in slides_data[0]:
-            prs.slide_width = slides_data[0]['slide_width']
-            prs.slide_height = slides_data[0]['slide_height']
-        
-        print(f"🔄 开始生成 {len(slides_data)} 页幻灯片...")
-        
-        # 为每个幻灯片数据创建幻灯片
-        for slide_data in slides_data:
-            slide_number = slide_data.get('slide_number', 1)
-            print(f"📄 生成第 {slide_number} 页...")
             
-            # 添加空白幻灯片
-            blank_slide_layout = prs.slide_layouts[6]  # 空白布局
-            slide = prs.slides.add_slide(blank_slide_layout)
+            print(f"🔄 开始生成 {len(slides_data)} 页幻灯片...")
             
-            # 添加图片
-            images_dir = os.path.dirname(json_path)
-            for img_info in slide_data.get('images', []):
-                add_image_to_slide(slide, img_info, images_dir)
-            
-            # 添加文本
-            for text_info in slide_data.get('texts', []):
-                add_text_to_slide(slide, text_info)
+            # 为每个幻灯片数据创建幻灯片
+            for i, slide_data in enumerate(slides_data):
+                slide_number = slide_data.get('slide_number', i+1)
+                print(f"📄 生成第 {slide_number} 页...")
+                
+                # 添加空白幻灯片
+                blank_slide_layout = prs.slide_layouts[6]  # 空白布局
+                slide = prs.slides.add_slide(blank_slide_layout)
+                
+                # 添加文本
+                texts = slide_data.get('texts', [])
+                if texts:
+                    create_text_boxes(slide, texts)
         
         # 保存PPT文件
         print(f"💾 保存PPT文件: {output_ppt_path}")
@@ -81,63 +96,81 @@ def create_ppt_from_json(json_path, output_ppt_path, template_ppt_path=None):
     except Exception as e:
         print(f"❌ 生成PPT过程中出现错误: {e}")
 
-def add_image_to_slide(slide, img_info, images_dir):
+def replace_slide_text_safe(slide, texts):
     """
-    向幻灯片添加图片
-    
-    Args:
-        slide: 幻灯片对象
-        img_info (dict): 图片信息
-        images_dir (str): 图片目录路径
+    安全地替换幻灯片中的文本内容
     """
     try:
-        filename = img_info.get('filename')
-        if not filename:
-            return
+        text_shapes = []
         
-        image_path = os.path.join(images_dir, filename)
-        if not os.path.exists(image_path):
-            print(f"⚠️  图片文件不存在: {image_path}")
-            return
+        # 收集所有可编辑的文本形状
+        for shape in slide.shapes:
+            if (hasattr(shape, 'text_frame') and 
+                shape.text_frame and 
+                hasattr(shape.text_frame, 'paragraphs')):
+                text_shapes.append(shape)
         
-        # 获取位置信息
-        position = img_info.get('position', {})
-        left = position.get('left', 0)
-        top = position.get('top', 0)
-        width = position.get('width', Inches(2))
-        height = position.get('height', Inches(2))
+        # 按位置排序（从上到下，从左到右）
+        text_shapes.sort(key=lambda x: (getattr(x, 'top', 0), getattr(x, 'left', 0)))
         
-        # 添加图片到幻灯片
-        slide.shapes.add_picture(
-            image_path,
-            left=left,
-            top=top,
-            width=width,
-            height=height
-        )
-        
+        # 替换文本内容
+        for i, text_info in enumerate(texts):
+            content = text_info.get('content', '').strip()
+            if not content:
+                continue
+            
+            if i < len(text_shapes):
+                shape = text_shapes[i]
+                
+                # 保存原有格式
+                original_font_name = None
+                original_font_size = None
+                
+                try:
+                    if shape.text_frame.paragraphs:
+                        first_para = shape.text_frame.paragraphs[0]
+                        if first_para.runs:
+                            first_run = first_para.runs[0]
+                            original_font_name = first_run.font.name
+                            original_font_size = first_run.font.size
+                except:
+                    pass
+                
+                # 替换文本内容
+                shape.text = content
+                
+                # 重新应用格式
+                try:
+                    for paragraph in shape.text_frame.paragraphs:
+                        for run in paragraph.runs:
+                            # 优先使用日语字体，但保持原有大小
+                            if original_font_name and 'Arial' not in str(original_font_name):
+                                run.font.name = original_font_name
+                            else:
+                                # 使用更通用的日语字体
+                                run.font.name = 'Microsoft YaHei UI'
+                            
+                            if original_font_size:
+                                run.font.size = original_font_size
+                except Exception as font_error:
+                    print(f"⚠️  设置字体时出错: {font_error}")
+            else:
+                # 如果文本数量超过现有文本框，创建新的文本框
+                create_additional_textbox(slide, content, i)
+    
     except Exception as e:
-        print(f"⚠️  添加图片时出错: {e}")
+        print(f"⚠️  替换文本时出错: {e}")
 
-def add_text_to_slide(slide, text_info):
+def create_additional_textbox(slide, content, index):
     """
-    向幻灯片添加文本
-    
-    Args:
-        slide: 幻灯片对象
-        text_info (dict): 文本信息
+    创建额外的文本框
     """
     try:
-        content = text_info.get('content', '')
-        if not content.strip():
-            return
-        
-        # 获取位置信息
-        position = text_info.get('position', {})
-        left = position.get('left', 0)
-        top = position.get('top', 0)
-        width = position.get('width', Inches(3))
-        height = position.get('height', Inches(1))
+        # 计算位置
+        left = Inches(1)
+        top = Inches(1.5 + index * 0.8)
+        width = Inches(8)
+        height = Inches(0.6)
         
         # 添加文本框
         textbox = slide.shapes.add_textbox(
@@ -147,127 +180,59 @@ def add_text_to_slide(slide, text_info):
             height=height
         )
         
-        text_frame = textbox.text_frame
-        text_frame.clear()  # 清空默认段落
+        textbox.text = content
         
-        # 应用样式信息
-        style_info = text_info.get('style', {})
-        paragraphs_info = style_info.get('paragraphs', [])
-        
-        if paragraphs_info:
-            # 使用详细的样式信息
-            for para_info in paragraphs_info:
-                if text_frame.paragraphs:
-                    p = text_frame.paragraphs[0] if len(text_frame.paragraphs) == 1 else text_frame.add_paragraph()
-                else:
-                    p = text_frame.add_paragraph()
-                
-                # 设置段落对齐方式
-                alignment = para_info.get('alignment')
-                if alignment:
-                    try:
-                        if 'CENTER' in str(alignment).upper():
-                            p.alignment = PP_ALIGN.CENTER
-                        elif 'RIGHT' in str(alignment).upper():
-                            p.alignment = PP_ALIGN.RIGHT
-                        elif 'LEFT' in str(alignment).upper():
-                            p.alignment = PP_ALIGN.LEFT
-                    except:
-                        pass
-                
-                # 添加文本运行
-                runs_info = para_info.get('runs', [])
-                if runs_info:
-                    for run_info in runs_info:
-                        run_text = run_info.get('text', '')
-                        if run_text:
-                            run = p.add_run()
-                            run.text = run_text
-                            
-                            # 应用字体样式
-                            apply_font_style(run, run_info)
-                else:
-                    # 如果没有runs信息，使用段落文本
-                    para_text = para_info.get('text', '')
-                    if para_text:
-                        run = p.add_run()
-                        run.text = para_text
-        else:
-            # 简单文本，没有详细样式信息
-            p = text_frame.paragraphs[0]
-            run = p.add_run()
-            run.text = content
-            
-            # 设置默认日语字体
-            if run.font:
-                run.font.name = 'Yu Gothic'  # 日语常用字体
-                run.font.size = Pt(18)
-        
-    except Exception as e:
-        print(f"⚠️  添加文本时出错: {e}")
-
-def apply_font_style(run, run_info):
-    """
-    应用字体样式
+        # 设置字体
+        for paragraph in textbox.text_frame.paragraphs:
+            for run in paragraph.runs:
+                run.font.name = 'Microsoft YaHei UI'
+                run.font.size = Pt(16)
     
-    Args:
-        run: 文本运行对象
-        run_info (dict): 运行样式信息
+    except Exception as e:
+        print(f"⚠️  创建额外文本框时出错: {e}")
+
+def create_text_boxes(slide, texts):
+    """
+    创建文本框（无模板时使用）
     """
     try:
-        font = run.font
+        # 计算文本框位置
+        left = Inches(1)
+        top = Inches(1.5)
+        width = Inches(8)
+        height = Inches(0.8)
         
-        # 字体名称
-        font_name = run_info.get('font_name')
-        if font_name:
-            font.name = font_name
-        else:
-            # 默认日语字体
-            font.name = 'Yu Gothic'
-        
-        # 字体大小
-        font_size = run_info.get('font_size')
-        if font_size:
-            font.size = Pt(font_size)
-        
-        # 粗体
-        bold = run_info.get('bold')
-        if bold is not None:
-            font.bold = bold
-        
-        # 斜体
-        italic = run_info.get('italic')
-        if italic is not None:
-            font.italic = italic
-        
-        # 下划线
-        underline = run_info.get('underline')
-        if underline and underline != 'None':
-            font.underline = True
-        
-        # 字体颜色
-        color = run_info.get('color')
-        if color and color != 'None':
-            try:
-                # 解析RGB颜色
-                if color.startswith('RGBColor'):
-                    # 提取RGB值
-                    rgb_match = color.replace('RGBColor(', '').replace(')', '')
-                    if ',' in rgb_match:
-                        r, g, b = map(int, rgb_match.split(','))
-                        font.color.rgb = RGBColor(r, g, b)
-            except:
-                pass
-        
+        for i, text_info in enumerate(texts):
+            content = text_info.get('content', '').strip()
+            if not content:
+                continue
+            
+            # 计算当前文本框位置
+            current_top = top + (height * i)
+            
+            # 添加文本框
+            textbox = slide.shapes.add_textbox(
+                left=left,
+                top=current_top,
+                width=width,
+                height=height
+            )
+            
+            text_frame = textbox.text_frame
+            text_frame.text = content
+            
+            # 格式化文本
+            for paragraph in text_frame.paragraphs:
+                for run in paragraph.runs:
+                    run.font.name = 'Microsoft YaHei UI'
+                    run.font.size = Pt(16)
+                    
     except Exception as e:
-        print(f"⚠️  应用字体样式时出错: {e}")
+        print(f"⚠️  创建文本框时出错: {e}")
 
 def validate_generated_ppt(ppt_path):
     """
     验证生成的PPT文件
-    
-    Args:
-        ppt_path (str): PPT文件路径
     """
     try:
         prs = Presentation(ppt_path)
@@ -293,6 +258,7 @@ if __name__ == "__main__":
     # 设置文件路径
     japanese_json = "trip7_ppt_translation/extracted_content/ppt_content.japanese.json"
     output_ppt = "trip7_ppt_translation/japanese/Web3与元宇宙_日语版.pptx"
+    template_ppt = "trip7_ppt_translation/chinese/第1课-课程简介-Web3简介(2课时)-20251020.pptx"  # 模板文件路径
     
     print("🚀 开始生成日语PPT文件...")
     print("=" * 50)
@@ -306,8 +272,14 @@ if __name__ == "__main__":
     # 创建输出目录
     os.makedirs(os.path.dirname(output_ppt), exist_ok=True)
     
-    # 生成PPT文件
-    create_ppt_from_json(japanese_json, output_ppt)
+    # 检查模板文件
+    if os.path.exists(template_ppt):
+        print(f"📋 找到模板文件: {template_ppt}")
+        create_ppt_from_json(japanese_json, output_ppt, template_ppt)
+    else:
+        print(f"⚠️  模板文件不存在: {template_ppt}")
+        print("将使用默认格式生成PPT")
+        create_ppt_from_json(japanese_json, output_ppt)
     
     # 验证生成的文件
     if os.path.exists(output_ppt):
