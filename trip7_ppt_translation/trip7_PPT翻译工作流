@@ -1,0 +1,4 @@
+1.拿到中文版的ppt--提取出ppt的内容（文字，图片等），和页数一一对应。ppt_content_extractor.py
+input--chinese目录下的pptx文件
+output--extracted_content/` 目录：包含所有提取的图片文件
+- `ppt_content.json` 文件：包含结构化的文本和图片信息
