@@ -17,3 +17,7 @@ output--翻译后的txt文件。
 input--翻译后的txt文件。
 output--日语的ppt_content.jpnese.json文件。
 
+5.使用新的ppt_content.jpnese.json文件，生成日语的ppt文件。ppt_content_generator.py
+input--ppt_content.jpnese.json文件
+output--日语的ppt文件。
+
