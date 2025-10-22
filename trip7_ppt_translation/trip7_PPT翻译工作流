@@ -13,7 +13,7 @@ prompt--
 input--ppt_texts_detailed.txt文件
 output--翻译后的txt文件。
 
-4.拿到翻译后的txt文件，填充到ppt_content.json文件中。ppt_content_filler.py
-
+4.拿到翻译后的txt文件，生成新的ppt_content.jpnese.json文件中。ppt_content_filler.py
 input--翻译后的txt文件。
-output--日语的ppt文件。
+output--日语的ppt_content.jpnese.json文件。
+
