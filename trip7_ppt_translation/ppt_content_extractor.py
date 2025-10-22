@@ -1,13 +1,10 @@
 from pptx import Presentation
-from PIL import Image
-import io
 import os
 import json
-from pptx.util import Inches
 
 def extract_ppt_content(ppt_path, output_dir="ppt_output", save_images=True):
     """
-    提取PPTX文件的内容（文字和图片），按页数一一对应，包含样式和位置信息
+    提取PPTX文件的纯文本内容，按页数一一对应
     
     Args:
         ppt_path (str): PPT文件路径
@@ -29,70 +26,18 @@ def extract_ppt_content(ppt_path, output_dir="ppt_output", save_images=True):
     for i, slide in enumerate(prs.slides, start=1):
         slide_info = {
             "slide_number": i,
-            "slide_width": prs.slide_width,
-            "slide_height": prs.slide_height,
             "texts": [],
             "images": []
         }
         
         for shape in slide.shapes:
-            # 提取文字及其样式和位置信息
+            # 提取纯文字内容
             if hasattr(shape, "text") and shape.text.strip():
-                text_info = {
-                    "content": shape.text.strip(),
-                    "position": {
-                        "left": shape.left,
-                        "top": shape.top,
-                        "width": shape.width,
-                        "height": shape.height
-                    }
-                }
-                
-                # 安全获取z_order
-                try:
-                    text_info["z_order"] = getattr(shape.element, 'z_order', 0) if hasattr(shape, 'element') else 0
-                except:
-                    text_info["z_order"] = 0
-                
-                # 提取文字样式信息
-                if hasattr(shape, 'text_frame') and shape.text_frame:
-                    text_info["style"] = {
-                        "paragraphs": []
-                    }
-                    
-                    for paragraph in shape.text_frame.paragraphs:
-                        para_info = {
-                            "text": paragraph.text,
-                            "alignment": str(paragraph.alignment) if paragraph.alignment else None,
-                            "runs": []
-                        }
-                        
-                        for run in paragraph.runs:
-                            run_info = {
-                                "text": run.text,
-                                "font_name": run.font.name if run.font.name else None,
-                                "font_size": run.font.size.pt if run.font.size else None,
-                                "bold": run.font.bold,
-                                "italic": run.font.italic,
-                                "underline": str(run.font.underline) if run.font.underline else None
-                            }
-                            
-                            # 安全提取字体颜色
-                            try:
-                                if run.font.color and hasattr(run.font.color, 'rgb') and run.font.color.rgb:
-                                    run_info["color"] = str(run.font.color.rgb)
-                                else:
-                                    run_info["color"] = None
-                            except Exception:
-                                run_info["color"] = None
-                            
-                            para_info["runs"].append(run_info)
-                        
-                        text_info["style"]["paragraphs"].append(para_info)
-                
-                slide_info["texts"].append(text_info)
+                slide_info["texts"].append({
+                    "content": shape.text.strip()
+                })
             
-            # 提取图片及其位置信息
+            # 提取图片（如果需要）
             if shape.shape_type == 13:  # 13表示图片类型
                 try:
                     image = shape.image
@@ -105,38 +50,11 @@ def extract_ppt_content(ppt_path, output_dir="ppt_output", save_images=True):
                         with open(image_path, "wb") as f:
                             f.write(image_bytes)
                     
-                    image_info = {
-                        "filename": image_name,
-                        "position": {
-                            "left": shape.left,
-                            "top": shape.top,
-                            "width": shape.width,
-                            "height": shape.height
-                        }
-                    }
-                    
-                    # 安全获取z_order
-                    try:
-                        image_info["z_order"] = getattr(shape.element, 'z_order', 0) if hasattr(shape, 'element') else 0
-                    except:
-                        image_info["z_order"] = 0
-                    
-                    # 安全获取原始尺寸
-                    try:
-                        image_info["original_size"] = {
-                            "width": image.size[0] if hasattr(image, 'size') else None,
-                            "height": image.size[1] if hasattr(image, 'size') else None
-                        }
-                    except:
-                        image_info["original_size"] = {"width": None, "height": None}
-                    
-                    slide_info["images"].append(image_info)
+                    slide_info["images"].append({
+                        "filename": image_name
+                    })
                 except Exception as e:
                     print(f"⚠️ 提取第{i}页图片时出错: {e}")
-        
-        # 按z_order排序，保持原有的层次关系
-        slide_info["texts"].sort(key=lambda x: x.get("z_order", 0))
-        slide_info["images"].sort(key=lambda x: x.get("z_order", 0))
         
         all_slides.append(slide_info)
     
@@ -169,15 +87,11 @@ def print_content_summary(slides_data):
         if slide["texts"]:
             preview = slide["texts"][0]["content"][:50] + "..." if len(slide["texts"][0]["content"]) > 50 else slide["texts"][0]["content"]
             print(f"  文本预览: {preview}")
-            
-            # 显示位置信息
-            pos = slide["texts"][0]["position"]
-            print(f"  位置: left={pos['left']}, top={pos['top']}, width={pos['width']}, height={pos['height']}")
 
 # 示例用法
 if __name__ == "__main__":
     # 从trip7_ppt_translation/chinese目录读取PPT文件
-    chinese_dir = "trip7_ppt_translation/chinese"  # 修改这里
+    chinese_dir = "trip7_ppt_translation/chinese"
     ppt_files = [f for f in os.listdir(chinese_dir) if f.endswith('.pptx')]
     
     if not ppt_files:
@@ -190,7 +104,7 @@ if __name__ == "__main__":
     
     try:
         # 提取内容到trip7_ppt_translation/extracted_content目录
-        slides_data = extract_ppt_content(ppt_file, output_dir="trip7_ppt_translation/extracted_content")  # 修改这里
+        slides_data = extract_ppt_content(ppt_file, output_dir="trip7_ppt_translation/extracted_content")
         
         # 打印摘要
         print_content_summary(slides_data)
