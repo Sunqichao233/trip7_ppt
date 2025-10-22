@@ -2,3 +2,18 @@
 input--chinese目录下的pptx文件
 output--extracted_content/` 目录：包含所有提取的图片文件
 - `ppt_content.json` 文件：包含结构化的文本和图片信息
+
+2.将ppt_content.json文件中的文本内容，提取出来，放到一个txt文件中。ppt_content_extractor.py
+input--ppt_content.json文件
+output--ppt_content.txt文件
+
+3.使用特定promopt，在ide里将文本内容翻译为日语。
+prompt--
+你是区块链领域的老师，请将中文的内容翻译为合适的日语。
+input--ppt_texts_detailed.txt文件
+output--翻译后的txt文件。
+
+4.拿到翻译后的txt文件，填充到ppt_content.json文件中。ppt_content_filler.py
+
+input--翻译后的txt文件。
+output--日语的ppt文件。
