@@ -1,23 +1,7 @@
-1.拿到中文版的ppt--提取出ppt的内容（文字，图片等），和页数一一对应。ppt_content_extractor.py
-input--chinese目录下的pptx文件
-output--extracted_content/` 目录：包含所有提取的图片文件
-- `ppt_content.json` 文件：包含结构化的文本和图片信息
+2中pattern
 
-2.将ppt_content.json文件中的文本内容，提取出来，放到一个txt文件中。ppt_content_extractor.py
-input--ppt_content.json文件
-output--ppt_content.txt文件
+1.PPT以文字为主，而不是字都在图片里，采用python脚本抽取文字--openai翻译--再将翻译后的文字填充到ppt_content.jpnese.json文件中。
 
-3.使用特定promopt，在ide里将文本内容翻译为日语。
-prompt--
-你是区块链领域的老师，请将中文的内容翻译为合适的日语。
-input--ppt_texts_detailed.txt文件
-output--翻译后的txt文件。
+2.PPT以图片为主，且排版也混乱，则采用ocr技术，抽象出ppt的内容，然后新生成ppt。
 
-4.拿到翻译后的txt文件，生成新的ppt_content.jpnese.json文件中。ppt_content_filler.py
-input--翻译后的txt文件。
-output--日语的ppt_content.jpnese.json文件。
-
-5.使用新的ppt_content.jpnese.json文件，生成日语的ppt文件。ppt_content_generator.py
-input--ppt_content.jpnese.json文件
-output--日语的ppt文件。
 
